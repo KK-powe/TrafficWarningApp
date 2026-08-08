@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 基础颜色 -->
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+
+    <!-- 主色调 -->
+    <color name="primary">#1565C0</color>
+    <color name="primary_dark">#0D47A1</color>
+    <color name="primary_light">#42A5F5</color>
+    <color name="accent">#FF6F00</color>
+
+    <!-- 风险等级颜色 -->
+    <color name="risk_low">#4CAF50</color>
+    <color name="risk_medium">#FF9800</color>
+    <color name="risk_high">#F44336</color>
+
+    <!-- 风险等级背景色 -->
+    <color name="risk_low_bg">#E8F5E9</color>
+    <color name="risk_medium_bg">#FFF3E0</color>
+    <color name="risk_high_bg">#FFEBEE</color>
+
+    <!-- 卡片背景 -->
+    <color name="card_background">#FFFFFF</color>
+    <color name="card_stroke">#E0E0E0</color>
+
+    <!-- 背景色 -->
+    <color name="background">#F5F5F5</color>
+    <color name="surface">#FFFFFF</color>
+
+    <!-- 文字颜色 -->
+    <color name="text_primary">#212121</color>
+    <color name="text_secondary">#757575</color>
+    <color name="text_hint">#BDBDBD</color>
+
+    <!-- 分隔线 -->
+    <color name="divider">#E0E0E0</color>
+
+    <!-- 按钮颜色 -->
+    <color name="btn_confirm">#4CAF50</color>
+    <color name="btn_false_alarm">#F44336</color>
+</resources>

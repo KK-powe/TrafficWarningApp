@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- FileProvider 路径配置，用于CSV文件分享 -->
+<paths>
+    <external-path
+        name="downloads"
+        path="Download/" />
+    <cache-path
+        name="cache"
+        path="." />
+</paths>

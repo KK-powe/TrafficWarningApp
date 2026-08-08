@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">交通风险预警</string>
+
+    <!-- 底部导航 -->
+    <string name="tab_realtime">实时</string>
+    <string name="tab_history">历史</string>
+    <string name="tab_settings">设置</string>
+
+    <!-- 主页面 -->
+    <string name="toolbar_title">交通风险预警系统</string>
+    <string name="risk_level_label">当前风险等级：</string>
+    <string name="risk_low_text">低</string>
+    <string name="risk_medium_text">中</string>
+    <string name="risk_high_text">高</string>
+    <string name="refresh_button">刷新</string>
+    <string name="loading">加载中…</string>
+    <string name="network_error">网络连接失败，请检查网络</string>
+    <string name="no_data">暂无预警数据</string>
+
+    <!-- 统计卡片 -->
+    <string name="card_total_warnings">预警总数</string>
+    <string name="card_total_tracked">跟踪目标</string>
+    <string name="card_high_risk">高风险</string>
+
+    <!-- 预警事件列表 -->
+    <string name="warning_list_title">预警事件列表</string>
+    <string name="unknown_type">未知类型</string>
+    <string name="unknown_location">未知位置</string>
+
+    <!-- 事件详情 -->
+    <string name="event_detail_title">事件详情</string>
+    <string name="label_target_id">目标ID</string>
+    <string name="label_type">预警类型</string>
+    <string name="label_class">目标类别</string>
+    <string name="label_location">位置</string>
+    <string name="label_time">时间</string>
+    <string name="label_description">描述</string>
+    <string name="label_risk_level">风险等级</string>
+    <string name="label_status">复核状态</string>
+    <string name="status_pending">待复核</string>
+    <string name="status_confirmed">已确认</string>
+    <string name="status_false_alarm">误报</string>
+    <string name="btn_confirm">确认预警</string>
+    <string name="btn_false_alarm">误报</string>
+    <string name="review_success">复核结果已保存</string>
+
+    <!-- 历史记录 -->
+    <string name="history_title">历史记录</string>
+    <string name="start_date">开始日期</string>
+    <string name="end_date">结束日期</string>
+    <string name="btn_query">查询</string>
+    <string name="no_history">暂无历史记录</string>
+
+    <!-- 设置 -->
+    <string name="settings_title">设置</string>
+    <string name="server_address_label">服务器地址</string>
+    <string name="server_address_hint">请输入服务器IP和端口</string>
+    <string name="refresh_interval_label">刷新间隔</string>
+    <string name="export_data">导出数据</string>
+    <string name="save_success">保存成功</string>
+    <string name="export_success">数据已导出</string>
+    <string name="permission_required">需要存储权限才能导出数据</string>
+
+    <!-- 通用 -->
+    <string name="retry">重试</string>
+
+    <!-- 刷新间隔数组 -->
+    <string-array name="refresh_intervals">
+        <item>1秒</item>
+        <item>2秒（默认）</item>
+        <item>3秒</item>
+        <item>5秒</item>
+        <item>10秒</item>
+    </string-array>
+
+    <string-array name="refresh_interval_values">
+        <item>1000</item>
+        <item>2000</item>
+        <item>3000</item>
+        <item>5000</item>
+        <item>10000</item>
+    </string-array>
+</resources>

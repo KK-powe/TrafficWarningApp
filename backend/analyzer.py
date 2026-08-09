@@ -163,6 +163,8 @@ class VideoAnalyzer:
         maximum_risk = 0.0
         frame_index = 0
         last_annotated = None
+        best_preview = None
+        best_preview_score = -1.0
         last_density_event_frame = -10**9
 
         with self._model_lock:
@@ -245,6 +247,9 @@ class VideoAnalyzer:
                     )
                     writer.write(annotated)
                     last_annotated = annotated
+                    if risk.score >= best_preview_score:
+                        best_preview_score = risk.score
+                        best_preview = annotated.copy()
 
                     for event in frame_events:
                         event_id = f"{task_id}-{len(api_events) + 1:04d}"
@@ -256,6 +261,7 @@ class VideoAnalyzer:
                                 event_id,
                                 created_at_ms,
                                 f"events/{image_name}",
+                                risk.level,
                             )
                         )
 
@@ -271,9 +277,9 @@ class VideoAnalyzer:
                 capture.release()
                 writer.release()
 
-        if frame_index == 0 or last_annotated is None:
+        if frame_index == 0 or last_annotated is None or best_preview is None:
             raise RuntimeError("视频中没有可处理的画面")
-        cv2.imwrite(str(preview_path), last_annotated)
+        cv2.imwrite(str(preview_path), best_preview)
 
         class_counts = Counter(unique_tracks.values())
         analysis = {
@@ -358,6 +364,7 @@ class VideoAnalyzer:
         event_id: str,
         created_at_ms: int,
         image_file: str,
+        frame_risk_level: str,
     ) -> dict:
         labels = {
             "wrong_way": "疑似逆行",
@@ -365,10 +372,18 @@ class VideoAnalyzer:
             "red_light": "疑似闯红灯",
             "high_density": "交通目标密度较高",
         }
+        event_risk_level = (
+            3 if event.severity >= 40 else 2 if event.severity >= 20 else 1
+        )
+        frame_level = (
+            3
+            if frame_risk_level in {"HIGH", "CRITICAL"}
+            else 2 if frame_risk_level == "MEDIUM" else 1
+        )
         return {
             "id": event_id,
             "type": labels.get(event.event_type, event.event_type),
-            "riskLevel": 3 if event.severity >= 40 else 2 if event.severity >= 20 else 1,
+            "riskLevel": max(event_risk_level, frame_level),
             "timestamp": created_at_ms + round(event.timestamp_seconds * 1000),
             "frameImageFile": image_file,
             "description": event.message,

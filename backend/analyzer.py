@@ -166,6 +166,7 @@ class VideoAnalyzer:
         best_preview = None
         best_preview_score = -1.0
         last_density_event_frame = -10**9
+        active_violation_until: dict[int, int] = {}
 
         with self._model_lock:
             model = self._get_model()
@@ -232,6 +233,22 @@ class VideoAnalyzer:
                         )
                         last_density_event_frame = frame_index
 
+                    violation_hold_frames = max(
+                        1,
+                        round(float(config["risk"]["event_window_seconds"]) * fps),
+                    )
+                    for event in frame_events:
+                        if event.track_id >= 0:
+                            active_violation_until[event.track_id] = (
+                                frame_index + violation_hold_frames
+                            )
+                    active_violation_until = {
+                        track_id: expiry_frame
+                        for track_id, expiry_frame in active_violation_until.items()
+                        if expiry_frame >= frame_index
+                    }
+                    global_suspicion_active = len(detections) >= density_target
+
                     risk = risk_scorer.update(
                         frame_index, len(detections), frame_events
                     )
@@ -244,6 +261,8 @@ class VideoAnalyzer:
                         frame_events,
                         risk,
                         config["rules"],
+                        active_violation_track_ids=active_violation_until,
+                        global_suspicion_active=global_suspicion_active,
                     )
                     writer.write(annotated)
                     last_annotated = annotated

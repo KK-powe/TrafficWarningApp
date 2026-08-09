@@ -1,0 +1,1 @@
+"""TrafficWarningApp FastAPI backend package."""

@@ -1,16 +1,23 @@
 package com.example.trafficwarningapp.data.network;
 
+import android.content.Context;
+import android.database.Cursor;
+import android.net.Uri;
+import android.provider.OpenableColumns;
+
 import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
 
 import com.example.trafficwarningapp.data.model.AnalysisData;
 import com.example.trafficwarningapp.data.model.AnalysisResponse;
 import com.example.trafficwarningapp.data.model.TrafficStats;
+import com.example.trafficwarningapp.data.model.TaskResponse;
 import com.example.trafficwarningapp.data.model.WarningEvent;
 
 import java.util.ArrayList;
 import java.util.List;
 
+import okhttp3.MultipartBody;
 import retrofit2.Call;
 import retrofit2.Callback;
 import retrofit2.Response;
@@ -23,11 +30,7 @@ import retrofit2.Response;
 public class ApiRepository {
 
     private static ApiRepository instance;
-    private ApiService apiService;
-
-    private ApiRepository() {
-        apiService = RetrofitClient.getInstance().getApiService();
-    }
+    private ApiRepository() {}
 
     public static synchronized ApiRepository getInstance() {
         if (instance == null) {
@@ -43,7 +46,7 @@ public class ApiRepository {
     public LiveData<AnalysisResponse> getRealtimeData() {
         MutableLiveData<AnalysisResponse> liveData = new MutableLiveData<>();
 
-        apiService.getRealtimeData().enqueue(new Callback<AnalysisResponse>() {
+        api().getRealtimeData().enqueue(new Callback<AnalysisResponse>() {
             @Override
             public void onResponse(Call<AnalysisResponse> call, Response<AnalysisResponse> response) {
                 if (response.isSuccessful() && response.body() != null) {
@@ -79,7 +82,7 @@ public class ApiRepository {
     public LiveData<AnalysisResponse> submitReview(String eventId, int status) {
         MutableLiveData<AnalysisResponse> liveData = new MutableLiveData<>();
 
-        apiService.submitReview(eventId, status).enqueue(new Callback<AnalysisResponse>() {
+        api().submitReview(eventId, status).enqueue(new Callback<AnalysisResponse>() {
             @Override
             public void onResponse(Call<AnalysisResponse> call, Response<AnalysisResponse> response) {
                 if (response.isSuccessful() && response.body() != null) {
@@ -102,6 +105,106 @@ public class ApiRepository {
         });
 
         return liveData;
+    }
+
+    /** 上传用户从系统文件选择器中选中的视频。 */
+    public LiveData<TaskResponse> createTask(Context context, Uri uri) {
+        MutableLiveData<TaskResponse> liveData = new MutableLiveData<>();
+        String fileName = getDisplayName(context, uri);
+        String mimeType = context.getContentResolver().getType(uri);
+        ContentUriRequestBody body = new ContentUriRequestBody(
+                context.getContentResolver(), uri, mimeType);
+        MultipartBody.Part part = MultipartBody.Part.createFormData("video", fileName, body);
+
+        api().createTask(part).enqueue(new Callback<TaskResponse>() {
+            @Override
+            public void onResponse(Call<TaskResponse> call, Response<TaskResponse> response) {
+                if (response.isSuccessful() && response.body() != null) {
+                    liveData.setValue(response.body());
+                } else {
+                    liveData.setValue(taskError(response.code(), "视频上传失败"));
+                }
+            }
+
+            @Override
+            public void onFailure(Call<TaskResponse> call, Throwable throwable) {
+                liveData.setValue(taskError(-1, "视频上传失败: " + throwable.getMessage()));
+            }
+        });
+        return liveData;
+    }
+
+    public LiveData<TaskResponse> getTaskStatus(String taskId) {
+        MutableLiveData<TaskResponse> liveData = new MutableLiveData<>();
+        api().getTaskStatus(taskId).enqueue(new Callback<TaskResponse>() {
+            @Override
+            public void onResponse(Call<TaskResponse> call, Response<TaskResponse> response) {
+                if (response.isSuccessful() && response.body() != null) {
+                    liveData.setValue(response.body());
+                } else {
+                    liveData.setValue(taskError(response.code(), "查询任务失败"));
+                }
+            }
+
+            @Override
+            public void onFailure(Call<TaskResponse> call, Throwable throwable) {
+                liveData.setValue(taskError(-1, "查询任务失败: " + throwable.getMessage()));
+            }
+        });
+        return liveData;
+    }
+
+    public LiveData<AnalysisResponse> getTaskResult(String taskId) {
+        MutableLiveData<AnalysisResponse> liveData = new MutableLiveData<>();
+        api().getTaskResult(taskId).enqueue(new Callback<AnalysisResponse>() {
+            @Override
+            public void onResponse(Call<AnalysisResponse> call,
+                                   Response<AnalysisResponse> response) {
+                if (response.isSuccessful() && response.body() != null) {
+                    liveData.setValue(response.body());
+                } else {
+                    AnalysisResponse error = new AnalysisResponse();
+                    error.setCode(response.code());
+                    error.setMessage("获取分析结果失败");
+                    liveData.setValue(error);
+                }
+            }
+
+            @Override
+            public void onFailure(Call<AnalysisResponse> call, Throwable throwable) {
+                AnalysisResponse error = new AnalysisResponse();
+                error.setCode(-1);
+                error.setMessage("获取分析结果失败: " + throwable.getMessage());
+                liveData.setValue(error);
+            }
+        });
+        return liveData;
+    }
+
+    private ApiService api() {
+        // 设置页修改服务器地址后，始终获取最新的Retrofit实例。
+        return RetrofitClient.getInstance().getApiService();
+    }
+
+    private static TaskResponse taskError(int code, String message) {
+        TaskResponse response = new TaskResponse();
+        response.setCode(code);
+        response.setMessage(message);
+        return response;
+    }
+
+    private static String getDisplayName(Context context, Uri uri) {
+        try (Cursor cursor = context.getContentResolver().query(
+                uri, new String[]{OpenableColumns.DISPLAY_NAME}, null, null, null)) {
+            if (cursor != null && cursor.moveToFirst()) {
+                int index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
+                if (index >= 0) {
+                    String name = cursor.getString(index);
+                    if (name != null && !name.isEmpty()) return name;
+                }
+            }
+        }
+        return "traffic_video.mp4";
     }
 
     /**

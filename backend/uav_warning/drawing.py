@@ -9,7 +9,7 @@ from .tracking import TrackHistory
 
 LEVEL_COLORS = {
     "LOW": (50, 205, 50),
-    "MEDIUM": (0, 165, 255),
+    "MEDIUM": (0, 255, 255),
     "HIGH": (0, 0, 255),
     "CRITICAL": (0, 0, 190),
 }
@@ -29,29 +29,33 @@ def draw_scene(
     events: Iterable[ViolationEvent],
     risk: FrameRisk,
     rules_config: dict,
+    active_violation_track_ids: Iterable[int] | None = None,
+    global_suspicion_active: bool = False,
 ) -> np.ndarray:
     height, width = frame.shape[:2]
     frame_events = list(events)
     _draw_rule_regions(frame, rules_config, width, height)
 
-    event_track_ids = {
+    violation_track_ids = set(active_violation_track_ids or ())
+    violation_track_ids.update(
         event.track_id for event in frame_events if event.track_id >= 0
-    }
+    )
     warning_active = risk.level != "LOW" or bool(frame_events)
-    warning_color = LEVEL_COLORS.get(risk.level, LEVEL_COLORS["LOW"])
 
     for detection in detections:
-        if detection.track_id in event_track_ids:
+        if detection.track_id in violation_track_ids:
+            # A rule has identified this exact tracked target as violating traffic rules.
             color = LEVEL_COLORS["HIGH"]
-        elif warning_active:
-            # Density warnings describe the whole frame rather than one target.
-            # Colouring all active targets makes this global risk visible.
-            color = warning_color
+            thickness = 3
+        elif global_suspicion_active:
+            # High density is a scene-level warning, not proof that every target violated.
+            color = LEVEL_COLORS["MEDIUM"]
+            thickness = 3
         else:
             color = LEVEL_COLORS["LOW"]
+            thickness = 2
 
         x1, y1, x2, y2 = detection.box
-        thickness = 3 if warning_active else 2
         cv2.rectangle(frame, (x1, y1), (x2, y2), color, thickness)
         label = f"{detection.class_name} ID:{detection.track_id} {detection.confidence:.2f}"
         cv2.putText(

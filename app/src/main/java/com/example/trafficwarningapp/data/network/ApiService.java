@@ -1,10 +1,15 @@
 package com.example.trafficwarningapp.data.network;
 
 import com.example.trafficwarningapp.data.model.AnalysisResponse;
+import com.example.trafficwarningapp.data.model.TaskResponse;
+
+import okhttp3.MultipartBody;
 
 import retrofit2.Call;
 import retrofit2.http.GET;
+import retrofit2.http.Multipart;
 import retrofit2.http.POST;
+import retrofit2.http.Part;
 import retrofit2.http.Path;
 
 /**
@@ -12,6 +17,19 @@ import retrofit2.http.Path;
  * 定义所有与后端通信的HTTP方法
  */
 public interface ApiService {
+
+    /** 上传视频并创建后台分析任务。 */
+    @Multipart
+    @POST("api/tasks")
+    Call<TaskResponse> createTask(@Part MultipartBody.Part video);
+
+    /** 查询任务处理状态和进度。 */
+    @GET("api/tasks/{taskId}")
+    Call<TaskResponse> getTaskStatus(@Path("taskId") String taskId);
+
+    /** 获取已完成任务的完整识别结果。 */
+    @GET("api/tasks/{taskId}/result")
+    Call<AnalysisResponse> getTaskResult(@Path("taskId") String taskId);
 
     /**
      * 获取实时分析数据（包含统计信息、预警事件列表、当前帧图片）

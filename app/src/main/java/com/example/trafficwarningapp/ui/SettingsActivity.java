@@ -112,7 +112,7 @@ public class SettingsActivity extends AppCompatActivity {
         spinnerInterval.setSelection(spinnerPosition);
 
         // 加载模拟数据开关
-        boolean useMock = prefs.getBoolean(KEY_USE_MOCK_DATA, true);
+        boolean useMock = prefs.getBoolean(KEY_USE_MOCK_DATA, false);
         switchMockData.setChecked(useMock);
         viewModel.setUseMockData(useMock);
     }
@@ -129,12 +129,10 @@ public class SettingsActivity extends AppCompatActivity {
                 RetrofitClient.getInstance().updateBaseUrl(address);
                 // 保存到SharedPreferences
                 prefs.edit().putString(KEY_SERVER_ADDRESS, address).apply();
-                // 如果使用了真实服务器地址，自动关闭模拟数据
-                if (!address.contains("192.168") && !address.equals("http://192.168.1.100:5000/")) {
-                    switchMockData.setChecked(false);
-                    viewModel.setUseMockData(false);
-                    prefs.edit().putBoolean(KEY_USE_MOCK_DATA, false).apply();
-                }
+                // 用户保存服务器地址就是准备联调，自动切换到真实接口。
+                switchMockData.setChecked(false);
+                viewModel.setUseMockData(false);
+                prefs.edit().putBoolean(KEY_USE_MOCK_DATA, false).apply();
                 Toast.makeText(this, R.string.save_success, Toast.LENGTH_SHORT).show();
             } else {
                 Toast.makeText(this, "请输入有效的服务器地址", Toast.LENGTH_SHORT).show();

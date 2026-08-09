@@ -13,7 +13,7 @@ import java.util.concurrent.TimeUnit;
  */
 public class RetrofitClient {
 
-    private static final String DEFAULT_BASE_URL = "http://192.168.1.100:5000/";
+    private static final String DEFAULT_BASE_URL = "http://10.0.2.2:6006/";
     private static RetrofitClient instance;
     private Retrofit retrofit;
     private String baseUrl;
@@ -41,12 +41,12 @@ public class RetrofitClient {
         HttpLoggingInterceptor loggingInterceptor = new HttpLoggingInterceptor();
         loggingInterceptor.setLevel(HttpLoggingInterceptor.Level.BODY);
 
-        // OkHttp客户端配置（超时30秒）
+        // 上传视频可能持续数分钟，读写超时要明显长于普通接口。
         OkHttpClient client = new OkHttpClient.Builder()
                 .addInterceptor(loggingInterceptor)
                 .connectTimeout(30, TimeUnit.SECONDS)
-                .readTimeout(30, TimeUnit.SECONDS)
-                .writeTimeout(30, TimeUnit.SECONDS)
+                .readTimeout(5, TimeUnit.MINUTES)
+                .writeTimeout(5, TimeUnit.MINUTES)
                 .build();
 
         retrofit = new Retrofit.Builder()

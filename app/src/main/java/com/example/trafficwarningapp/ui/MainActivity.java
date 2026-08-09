@@ -3,15 +3,19 @@ package com.example.trafficwarningapp.ui;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.drawable.GradientDrawable;
+import android.net.Uri;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.ImageView;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.lifecycle.ViewModelProvider;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
@@ -42,6 +46,17 @@ public class MainActivity extends AppCompatActivity {
     private TextView tvTotalWarnings, tvTotalTracked, tvHighRisk;
     private RecyclerView rvWarningEvents;
     private TextView tvNoData;
+    private TextView tvTaskStatus;
+    private ProgressBar progressTask;
+    private View btnSelectVideo, btnOpenResult;
+    private String resultVideoUrl;
+
+    private final ActivityResultLauncher<String> videoPicker = registerForActivityResult(
+            new ActivityResultContracts.GetContent(), uri -> {
+                if (uri != null) {
+                    viewModel.uploadVideo(uri);
+                }
+            });
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -83,6 +98,13 @@ public class MainActivity extends AppCompatActivity {
         // 列表
         rvWarningEvents = findViewById(R.id.rv_warning_events);
         tvNoData = findViewById(R.id.tv_no_data);
+
+        tvTaskStatus = findViewById(R.id.tv_task_status);
+        progressTask = findViewById(R.id.progress_task);
+        btnSelectVideo = findViewById(R.id.btn_select_video);
+        btnOpenResult = findViewById(R.id.btn_open_result);
+        btnSelectVideo.setOnClickListener(v -> videoPicker.launch("video/*"));
+        btnOpenResult.setOnClickListener(v -> openResultVideo());
 
         // 刷新按钮
         findViewById(R.id.btn_refresh).setOnClickListener(v -> {
@@ -188,6 +210,31 @@ public class MainActivity extends AppCompatActivity {
                 Toast.makeText(this, error, Toast.LENGTH_SHORT).show();
             }
         });
+
+        viewModel.getTaskStatusLiveData().observe(this, tvTaskStatus::setText);
+        viewModel.getTaskProgressLiveData().observe(this, progress ->
+                progressTask.setProgress(progress == null ? 0 : progress));
+        viewModel.getTaskRunningLiveData().observe(this, running -> {
+            boolean isRunning = Boolean.TRUE.equals(running);
+            progressTask.setVisibility(isRunning ? View.VISIBLE : View.GONE);
+            btnSelectVideo.setEnabled(!isRunning);
+        });
+        viewModel.getResultVideoUrlLiveData().observe(this, url -> {
+            resultVideoUrl = url;
+            btnOpenResult.setVisibility(
+                    url == null || url.isEmpty() ? View.GONE : View.VISIBLE);
+        });
+    }
+
+    private void openResultVideo() {
+        if (resultVideoUrl == null || resultVideoUrl.isEmpty()) return;
+        Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(resultVideoUrl));
+        intent.setDataAndType(Uri.parse(resultVideoUrl), "video/*");
+        try {
+            startActivity(intent);
+        } catch (Exception exception) {
+            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(resultVideoUrl)));
+        }
     }
 
     /**

@@ -17,6 +17,10 @@
     <string name="loading">加载中…</string>
     <string name="network_error">网络连接失败，请检查网络</string>
     <string name="no_data">暂无预警数据</string>
+    <string name="video_analysis_title">上传视频分析</string>
+    <string name="video_task_idle">请选择交通视频</string>
+    <string name="select_video">选择并上传视频</string>
+    <string name="open_result_video">查看结果视频</string>
 
     <!-- 统计卡片 -->
     <string name="card_total_warnings">预警总数</string>

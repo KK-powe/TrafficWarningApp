@@ -17,6 +17,12 @@ public class AnalysisData {
     /** 当前标注帧图片URL */
     private String annotatedImageUrl;
 
+    /** 服务器生成的标注结果视频URL */
+    private String resultVideoUrl;
+
+    /** 本次分析任务ID */
+    private String taskId;
+
     public AnalysisData() {}
 
     public AnalysisData(TrafficStats stats, List<WarningEvent> events, String annotatedImageUrl) {
@@ -50,4 +56,14 @@ public class AnalysisData {
     public void setAnnotatedImageUrl(String annotatedImageUrl) {
         this.annotatedImageUrl = annotatedImageUrl;
     }
+
+    public String getResultVideoUrl() { return resultVideoUrl; }
+
+    public void setResultVideoUrl(String resultVideoUrl) {
+        this.resultVideoUrl = resultVideoUrl;
+    }
+
+    public String getTaskId() { return taskId; }
+
+    public void setTaskId(String taskId) { this.taskId = taskId; }
 }

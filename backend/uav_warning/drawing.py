@@ -18,7 +18,6 @@ EVENT_LABELS = {
     "wrong_way": "WRONG WAY",
     "restricted_zone": "RESTRICTED ZONE",
     "red_light": "RED LIGHT",
-    "high_density": "HIGH DENSITY",
 }
 
 
@@ -30,7 +29,7 @@ def draw_scene(
     risk: FrameRisk,
     rules_config: dict,
     active_violation_track_ids: Iterable[int] | None = None,
-    global_suspicion_active: bool = False,
+    suspicious_track_ids: Iterable[int] | None = None,
 ) -> np.ndarray:
     height, width = frame.shape[:2]
     frame_events = list(events)
@@ -40,15 +39,14 @@ def draw_scene(
     violation_track_ids.update(
         event.track_id for event in frame_events if event.track_id >= 0
     )
-    warning_active = risk.level != "LOW" or bool(frame_events)
+    suspicious_ids = set(suspicious_track_ids or ())
+    suspicious_ids.difference_update(violation_track_ids)
 
     for detection in detections:
         if detection.track_id in violation_track_ids:
-            # A rule has identified this exact tracked target as violating traffic rules.
             color = LEVEL_COLORS["HIGH"]
             thickness = 3
-        elif global_suspicion_active:
-            # High density is a scene-level warning, not proof that every target violated.
+        elif detection.track_id in suspicious_ids:
             color = LEVEL_COLORS["MEDIUM"]
             thickness = 3
         else:
@@ -57,7 +55,10 @@ def draw_scene(
 
         x1, y1, x2, y2 = detection.box
         cv2.rectangle(frame, (x1, y1), (x2, y2), color, thickness)
-        label = f"{detection.class_name} ID:{detection.track_id} {detection.confidence:.2f}"
+        label = (
+            f"{detection.class_name} ID:{detection.track_id} "
+            f"{detection.confidence:.2f}"
+        )
         cv2.putText(
             frame,
             label,
@@ -79,7 +80,7 @@ def draw_scene(
                 cv2.LINE_AA,
             )
 
-    _draw_status_panel(frame, risk, frame_events)
+    _draw_status_panel(frame, risk, frame_events, len(suspicious_ids))
     return frame
 
 
@@ -127,10 +128,11 @@ def _draw_status_panel(
     frame: np.ndarray,
     risk: FrameRisk,
     events: Sequence[ViolationEvent],
+    suspicious_count: int,
 ) -> None:
     height, width = frame.shape[:2]
     color = LEVEL_COLORS.get(risk.level, LEVEL_COLORS["LOW"])
-    warning_active = risk.level != "LOW" or bool(events)
+    warning_active = risk.level != "LOW" or bool(events) or suspicious_count > 0
 
     if warning_active:
         overlay = frame.copy()
@@ -156,7 +158,12 @@ def _draw_status_panel(
                 for event in events
             }
         )
-        detail = " / ".join(event_names) if event_names else "RISK REMAINS ACTIVE"
+        if event_names:
+            detail = " / ".join(event_names)
+        elif suspicious_count > 0:
+            detail = f"SUSPICIOUS TARGETS {suspicious_count}"
+        else:
+            detail = "RISK REMAINS ACTIVE"
         detail += (
             f" | objects {risk.tracked_objects} | recent events {risk.recent_events}"
         )

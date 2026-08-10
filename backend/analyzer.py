@@ -43,6 +43,9 @@ DEFAULT_CONFIG = {
             "minimum_history": 8,
             "minimum_displacement_pixels": 25.0,
             "maximum_direction_cosine": -0.25,
+            "warning_minimum_history": 4,
+            "warning_minimum_displacement_pixels": 12.0,
+            "suspicious_direction_cosine": 0.2,
             "cooldown_seconds": 3.0,
             "severity": 25,
         },
@@ -50,6 +53,7 @@ DEFAULT_CONFIG = {
             "enabled": False,
             "polygon": [[0.05, 0.55], [0.95, 0.55], [0.95, 0.95], [0.05, 0.95]],
             "prohibited_classes": ["car", "van", "bus", "truck"],
+            "warning_margin_pixels": 30.0,
             "cooldown_seconds": 3.0,
             "severity": 20,
         },
@@ -68,20 +72,17 @@ DEFAULT_CONFIG = {
                 "truck",
             ],
             "minimum_movement_pixels": 8.0,
+            "warning_distance_pixels": 40.0,
             "cooldown_seconds": 5.0,
             "severity": 40,
         },
     },
     "risk": {
         "event_window_seconds": 3.0,
-        "density_target_count": 15,
-        "density_max_score": 25,
-        "density_event_cooldown_seconds": 5,
         "event_weights": {
             "wrong_way": 25,
             "restricted_zone": 20,
             "red_light": 40,
-            "high_density": 25,
         },
         "levels": {"medium": 25, "high": 50, "critical": 75},
     },
@@ -158,6 +159,8 @@ class VideoAnalyzer:
         rule_engine = RuleEngine(config["rules"])
         risk_scorer = RiskScorer(config["risk"], fps)
         unique_tracks: dict[int, str] = {}
+        violation_track_ids: set[int] = set()
+        suspicious_track_ids_seen: set[int] = set()
         api_events: list[dict] = []
         risk_sum = 0.0
         maximum_risk = 0.0
@@ -165,7 +168,6 @@ class VideoAnalyzer:
         last_annotated = None
         best_preview = None
         best_preview_score = -1.0
-        last_density_event_frame = -10**9
         active_violation_until: dict[int, int] = {}
 
         with self._model_lock:
@@ -200,6 +202,7 @@ class VideoAnalyzer:
                         unique_tracks[detection.track_id] = detection.class_name
 
                     frame_events: list[ViolationEvent] = []
+                    frame_suspicious_track_ids: set[int] = set()
                     for detection in detections:
                         frame_events.extend(
                             rule_engine.evaluate(
@@ -211,46 +214,48 @@ class VideoAnalyzer:
                                 height,
                             )
                         )
+                        if rule_engine.is_suspicious(
+                            detection,
+                            history,
+                            frame_index,
+                            fps,
+                            width,
+                            height,
+                        ):
+                            frame_suspicious_track_ids.add(detection.track_id)
 
-                    density_target = int(config["risk"]["density_target_count"])
-                    density_cooldown = round(
-                        float(config["risk"]["density_event_cooldown_seconds"]) * fps
-                    )
-                    if (
-                        len(detections) >= density_target
-                        and frame_index - last_density_event_frame >= density_cooldown
-                    ):
-                        frame_events.append(
-                            ViolationEvent(
-                                frame_index=frame_index,
-                                timestamp_seconds=round(frame_index / fps, 3),
-                                track_id=-1,
-                                class_name="all",
-                                event_type="high_density",
-                                severity=25,
-                                message=f"画面内同时跟踪到{len(detections)}个交通目标",
-                            )
-                        )
-                        last_density_event_frame = frame_index
+                    frame_violation_track_ids = {
+                        event.track_id
+                        for event in frame_events
+                        if event.track_id >= 0
+                    }
+                    violation_track_ids.update(frame_violation_track_ids)
 
                     violation_hold_frames = max(
                         1,
                         round(float(config["risk"]["event_window_seconds"]) * fps),
                     )
-                    for event in frame_events:
-                        if event.track_id >= 0:
-                            active_violation_until[event.track_id] = (
-                                frame_index + violation_hold_frames
-                            )
+                    for track_id in frame_violation_track_ids:
+                        active_violation_until[track_id] = (
+                            frame_index + violation_hold_frames
+                        )
                     active_violation_until = {
                         track_id: expiry_frame
                         for track_id, expiry_frame in active_violation_until.items()
                         if expiry_frame >= frame_index
                     }
-                    global_suspicion_active = len(detections) >= density_target
+                    active_violation_track_ids = set(active_violation_until)
+
+                    # Red has priority. A target already confirmed as violating
+                    # is never downgraded to yellow later in the same video.
+                    frame_suspicious_track_ids.difference_update(violation_track_ids)
+                    suspicious_track_ids_seen.update(frame_suspicious_track_ids)
 
                     risk = risk_scorer.update(
-                        frame_index, len(detections), frame_events
+                        frame_index,
+                        len(detections),
+                        frame_events,
+                        suspicious_objects=len(frame_suspicious_track_ids),
                     )
                     risk_sum += risk.score
                     maximum_risk = max(maximum_risk, risk.score)
@@ -261,8 +266,8 @@ class VideoAnalyzer:
                         frame_events,
                         risk,
                         config["rules"],
-                        active_violation_track_ids=active_violation_until,
-                        global_suspicion_active=global_suspicion_active,
+                        active_violation_track_ids=active_violation_track_ids,
+                        suspicious_track_ids=frame_suspicious_track_ids,
                     )
                     writer.write(annotated)
                     last_annotated = annotated
@@ -280,7 +285,6 @@ class VideoAnalyzer:
                                 event_id,
                                 created_at_ms,
                                 f"events/{image_name}",
-                                risk.level,
                             )
                         )
 
@@ -301,6 +305,10 @@ class VideoAnalyzer:
         cv2.imwrite(str(preview_path), best_preview)
 
         class_counts = Counter(unique_tracks.values())
+        flagged_track_ids = violation_track_ids | suspicious_track_ids_seen
+        overall_risk_level = (
+            3 if violation_track_ids else 2 if suspicious_track_ids_seen else 1
+        )
         analysis = {
             "taskId": task_id,
             "createdAt": created_at_ms,
@@ -313,12 +321,10 @@ class VideoAnalyzer:
             "averageRiskScore": round(risk_sum / frame_index, 2),
             "classCounts": dict(sorted(class_counts.items())),
             "stats": {
-                "totalWarnings": len(api_events),
+                "totalWarnings": len(flagged_track_ids),
                 "totalTracked": len(unique_tracks),
-                "highRiskCount": sum(
-                    1 for event in api_events if event["riskLevel"] == 3
-                ),
-                "riskLevel": self._risk_level(maximum_risk),
+                "highRiskCount": len(violation_track_ids),
+                "riskLevel": overall_risk_level,
             },
             "events": api_events,
             "annotatedImageFile": "preview.jpg",
@@ -369,44 +375,25 @@ class VideoAnalyzer:
         return detections
 
     @staticmethod
-    def _risk_level(score: float) -> int:
-        if score >= 50:
-            return 3
-        if score >= 25:
-            return 2
-        return 1
-
-    @classmethod
     def _to_api_event(
-        cls,
         event,
         event_id: str,
         created_at_ms: int,
         image_file: str,
-        frame_risk_level: str,
     ) -> dict:
         labels = {
-            "wrong_way": "疑似逆行",
-            "restricted_zone": "疑似进入限制区域",
-            "red_light": "疑似闯红灯",
-            "high_density": "交通目标密度较高",
+            "wrong_way": "逆行违规",
+            "restricted_zone": "驶入限制区域",
+            "red_light": "闯红灯违规",
         }
-        event_risk_level = (
-            3 if event.severity >= 40 else 2 if event.severity >= 20 else 1
-        )
-        frame_level = (
-            3
-            if frame_risk_level in {"HIGH", "CRITICAL"}
-            else 2 if frame_risk_level == "MEDIUM" else 1
-        )
         return {
             "id": event_id,
             "type": labels.get(event.event_type, event.event_type),
-            "riskLevel": max(event_risk_level, frame_level),
+            "riskLevel": 3,
             "timestamp": created_at_ms + round(event.timestamp_seconds * 1000),
             "frameImageFile": image_file,
             "description": event.message,
-            "targetId": str(event.track_id) if event.track_id >= 0 else "-",
+            "targetId": str(event.track_id),
             "targetClass": event.class_name,
             "location": "上传视频画面",
             "reviewStatus": 0,

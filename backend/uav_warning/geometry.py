@@ -31,6 +31,33 @@ def point_in_polygon(point: Point, polygon: Sequence[Point]) -> bool:
     return inside
 
 
+def point_to_segment_distance(point: Point, start: Point, end: Point) -> float:
+    px, py = point
+    x1, y1 = start
+    x2, y2 = end
+    dx = float(x2 - x1)
+    dy = float(y2 - y1)
+    length_squared = dx * dx + dy * dy
+    if length_squared == 0:
+        return math.hypot(px - x1, py - y1)
+    ratio = ((px - x1) * dx + (py - y1) * dy) / length_squared
+    ratio = max(0.0, min(1.0, ratio))
+    nearest_x = x1 + ratio * dx
+    nearest_y = y1 + ratio * dy
+    return math.hypot(px - nearest_x, py - nearest_y)
+
+
+def point_to_polygon_distance(point: Point, polygon: Sequence[Point]) -> float:
+    if not polygon:
+        return math.inf
+    return min(
+        point_to_segment_distance(
+            point, polygon[index], polygon[(index + 1) % len(polygon)]
+        )
+        for index in range(len(polygon))
+    )
+
+
 def _point_on_segment(
     point: Point, start: Point, end: Point, tolerance: float = 1.0
 ) -> bool:

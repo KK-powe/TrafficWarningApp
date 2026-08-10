@@ -20,7 +20,8 @@ tracking:
   history_length: 60
   stale_after_frames: 90
 
-# 下面三类规则依赖具体视频的方向、区域和信号灯时间标定，默认关闭。
+# 三类规则依赖具体视频的方向、区域和信号灯时间标定，默认关闭。
+# 只有启用并完成标定的规则才会产生黄色可疑目标和红色违规目标。
 rules:
   wrong_way:
     enabled: false
@@ -29,6 +30,9 @@ rules:
     minimum_history: 8
     minimum_displacement_pixels: 25
     maximum_direction_cosine: -0.25
+    warning_minimum_history: 4
+    warning_minimum_displacement_pixels: 12
+    suspicious_direction_cosine: 0.20
     cooldown_seconds: 3
     severity: 25
 
@@ -40,6 +44,7 @@ rules:
       - [0.95, 0.95]
       - [0.05, 0.95]
     prohibited_classes: [car, van, bus, truck]
+    warning_margin_pixels: 30
     cooldown_seconds: 3
     severity: 20
 
@@ -52,19 +57,17 @@ rules:
       - [0.0, 10.0]
     target_classes: [bicycle, motor, tricycle, awning-tricycle, car, van, bus, truck]
     minimum_movement_pixels: 8
+    warning_distance_pixels: 40
     cooldown_seconds: 5
     severity: 40
 
+# 车辆数量只用于统计，不参与风险分数、边框颜色或目标框颜色。
 risk:
   event_window_seconds: 3
-  density_target_count: 15
-  density_max_score: 25
-  density_event_cooldown_seconds: 5
   event_weights:
     wrong_way: 25
     restricted_zone: 20
     red_light: 40
-    high_density: 25
   levels:
     medium: 25
     high: 50

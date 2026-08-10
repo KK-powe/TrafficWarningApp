@@ -31,19 +31,19 @@ class FakeAnalyzer:
             "stats": {
                 "totalWarnings": 1,
                 "totalTracked": 2,
-                "highRiskCount": 0,
-                "riskLevel": 2,
+                "highRiskCount": 1,
+                "riskLevel": 3,
             },
             "events": [
                 {
                     "id": f"{task_id}-0001",
-                    "type": "交通目标密度较高",
-                    "riskLevel": 2,
+                    "type": "逆行违规",
+                    "riskLevel": 3,
                     "timestamp": created_at_ms,
                     "frameImageFile": "events/event.jpg",
-                    "description": "测试事件",
-                    "targetId": "-",
-                    "targetClass": "all",
+                    "description": "测试违规事件",
+                    "targetId": "12",
+                    "targetClass": "motor",
                     "location": "上传视频画面",
                     "reviewStatus": 0,
                 }
@@ -100,8 +100,12 @@ def test_health_and_video_task_flow(tmp_path: Path) -> None:
     result = client.get(f"/api/tasks/{task_id}/result").json()
     assert result["code"] == 200
     assert result["data"]["stats"]["totalTracked"] == 2
+    assert result["data"]["stats"]["highRiskCount"] == 1
+    assert result["data"]["events"][0]["riskLevel"] == 3
     assert result["data"]["resultVideoUrl"].endswith("/annotated.mp4")
-    assert result["data"]["events"][0]["frameImageUrl"].endswith("/events/event.jpg")
+    assert result["data"]["events"][0]["frameImageUrl"].endswith(
+        "/events/event.jpg"
+    )
 
     event_id = result["data"]["events"][0]["id"]
     review = client.post(f"/api/review/{event_id}/1")

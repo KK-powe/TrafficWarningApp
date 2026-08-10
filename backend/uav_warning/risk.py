@@ -15,8 +15,17 @@ class RiskScorer:
         frame_index: int,
         tracked_objects: int,
         new_events: Iterable[ViolationEvent],
+        suspicious_objects: int = 0,
     ) -> FrameRisk:
-        self._recent_events.extend(new_events)
+        """Calculate risk from per-target states only.
+
+        tracked_objects is kept for display/statistics and never changes the
+        risk score. A concrete suspicious target produces MEDIUM risk, while a
+        confirmed rule event produces at least HIGH risk.
+        """
+        self._recent_events.extend(
+            event for event in new_events if event.track_id >= 0
+        )
         window_frames = max(
             1, round(float(self.config["event_window_seconds"]) * self.fps)
         )
@@ -26,19 +35,21 @@ class RiskScorer:
         ):
             self._recent_events.popleft()
 
-        density_target = max(1, int(self.config["density_target_count"]))
-        density_score = min(
-            float(self.config["density_max_score"]),
-            tracked_objects
-            / density_target
-            * float(self.config["density_max_score"]),
-        )
+        levels = self.config["levels"]
         weights = self.config["event_weights"]
         event_score = sum(
             float(weights.get(event.event_type, event.severity))
             for event in self._recent_events
         )
-        score = round(min(100.0, density_score + event_score), 2)
+
+        if self._recent_events:
+            score = max(float(levels["high"]), event_score)
+        elif suspicious_objects > 0:
+            score = float(levels["medium"])
+        else:
+            score = 0.0
+
+        score = round(min(100.0, score), 2)
         return FrameRisk(
             frame_index=frame_index,
             timestamp_seconds=round(frame_index / self.fps, 3),

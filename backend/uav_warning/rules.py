@@ -5,6 +5,8 @@ from .geometry import (
     displacement,
     normalized_points_to_pixels,
     point_in_polygon,
+    point_to_polygon_distance,
+    point_to_segment_distance,
     signed_line_side,
     vector_length,
 )
@@ -101,6 +103,50 @@ class RuleEngine:
                 )
         return events
 
+    def is_suspicious(
+        self,
+        detection: Detection,
+        history: TrackHistory,
+        frame_index: int,
+        fps: float,
+        frame_width: int,
+        frame_height: int,
+    ) -> bool:
+        """Return true only when this target is close to a configured violation."""
+
+        wrong_way = self.config["wrong_way"]
+        if (
+            wrong_way["enabled"]
+            and detection.class_name in wrong_way["target_classes"]
+            and self._is_wrong_way_suspicious(detection, history, wrong_way)
+        ):
+            return True
+
+        restricted = self.config["restricted_zone"]
+        if restricted["enabled"] and detection.class_name in restricted[
+            "prohibited_classes"
+        ]:
+            polygon = normalized_points_to_pixels(
+                restricted["polygon"], frame_width, frame_height
+            )
+            if (
+                not point_in_polygon(detection.center, polygon)
+                and point_to_polygon_distance(detection.center, polygon)
+                <= float(restricted.get("warning_margin_pixels", 30.0))
+            ):
+                return True
+
+        red_light = self.config["red_light"]
+        timestamp = frame_index / fps
+        return (
+            red_light["enabled"]
+            and detection.class_name in red_light["target_classes"]
+            and self._is_red_time(timestamp, red_light["red_intervals_seconds"])
+            and self._near_stop_line(
+                detection, history, red_light, frame_width, frame_height
+            )
+        )
+
     @staticmethod
     def _is_wrong_way(
         detection: Detection, history: TrackHistory, config: dict
@@ -119,8 +165,54 @@ class RuleEngine:
         )
 
     @staticmethod
+    def _is_wrong_way_suspicious(
+        detection: Detection, history: TrackHistory, config: dict
+    ) -> bool:
+        points = history.points(detection.track_id)
+        minimum_history = int(
+            config.get(
+                "warning_minimum_history",
+                max(2, int(config["minimum_history"]) // 2),
+            )
+        )
+        if len(points) < minimum_history:
+            return False
+        motion = displacement(points[-minimum_history], points[-1])
+        minimum_displacement = float(
+            config.get(
+                "warning_minimum_displacement_pixels",
+                float(config["minimum_displacement_pixels"]) / 2,
+            )
+        )
+        if vector_length(motion) < minimum_displacement:
+            return False
+        similarity = cosine_similarity(motion, config["expected_direction"])
+        return similarity <= float(config.get("suspicious_direction_cosine", 0.2))
+
+    @staticmethod
     def _is_red_time(timestamp: float, intervals: list) -> bool:
         return any(float(start) <= timestamp <= float(end) for start, end in intervals)
+
+    @staticmethod
+    def _near_stop_line(
+        detection: Detection,
+        history: TrackHistory,
+        config: dict,
+        width: int,
+        height: int,
+    ) -> bool:
+        points = history.points(detection.track_id)
+        if len(points) < 2:
+            return False
+        movement = vector_length(displacement(points[-2], points[-1]))
+        if movement < max(1.0, float(config["minimum_movement_pixels"]) / 2):
+            return False
+        line_start, line_end = normalized_points_to_pixels(
+            config["stop_line"], width, height
+        )
+        return point_to_segment_distance(
+            detection.center, line_start, line_end
+        ) <= float(config.get("warning_distance_pixels", 40.0))
 
     @staticmethod
     def _crossed_stop_line(

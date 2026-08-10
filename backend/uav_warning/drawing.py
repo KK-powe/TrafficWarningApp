@@ -51,34 +51,33 @@ def draw_scene(
             thickness = 3
         else:
             color = LEVEL_COLORS["LOW"]
-            thickness = 2
+            thickness = 3
 
         x1, y1, x2, y2 = detection.box
         cv2.rectangle(frame, (x1, y1), (x2, y2), color, thickness)
-        label = (
-            f"{detection.class_name} ID:{detection.track_id} "
-            f"{detection.confidence:.2f}"
-        )
+        track_label = f"ID:{detection.track_id}" if detection.track_id >= 0 else "ID:--"
+        label = f"{detection.class_name} {track_label} {detection.confidence:.2f}"
         cv2.putText(
             frame,
             label,
             (x1, max(20, y1 - 7)),
             cv2.FONT_HERSHEY_SIMPLEX,
-            0.52,
+            0.60,
             color,
             2,
             cv2.LINE_AA,
         )
-        points = history.points(detection.track_id)
-        if len(points) >= 2:
-            cv2.polylines(
-                frame,
-                [np.asarray(points, dtype=np.int32)],
-                False,
-                color,
-                2,
-                cv2.LINE_AA,
-            )
+        if detection.track_id >= 0:
+            points = history.points(detection.track_id)
+            if len(points) >= 2:
+                cv2.polylines(
+                    frame,
+                    [np.asarray(points, dtype=np.int32)],
+                    False,
+                    color,
+                    2,
+                    cv2.LINE_AA,
+                )
 
     _draw_status_panel(frame, risk, frame_events, len(suspicious_ids))
     return frame

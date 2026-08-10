@@ -12,10 +12,10 @@ ProgressCallback = Callable[[int], None]
 DEFAULT_CONFIG = {
     "model": {
         "device": "auto",
-        "confidence": 0.25,
+        "confidence": 0.15,
         "iou": 0.5,
         "image_size": 1280,
-        "tracker": "bytetrack.yaml",
+        "tracker": "bytetrack_traffic.yaml",
         "tracked_classes": [
             "pedestrian",
             "people",
@@ -167,7 +167,7 @@ class VideoAnalyzer:
         frame_index = 0
         last_annotated = None
         best_preview = None
-        best_preview_score = -1.0
+        best_preview_key: tuple[float, int] | None = None
         active_violation_until: dict[int, int] = {}
 
         with self._model_lock:
@@ -178,6 +178,7 @@ class VideoAnalyzer:
             selected_class_ids = self._resolve_class_ids(
                 class_names, model_config.get("tracked_classes", [])
             )
+            tracker_config = self._resolve_tracker_path(model_config["tracker"])
 
             try:
                 while True:
@@ -188,7 +189,7 @@ class VideoAnalyzer:
                     result = model.track(
                         source=frame,
                         persist=True,
-                        tracker=str(model_config["tracker"]),
+                        tracker=tracker_config,
                         device=device,
                         conf=float(model_config["confidence"]),
                         iou=float(model_config["iou"]),
@@ -198,12 +199,18 @@ class VideoAnalyzer:
                     )[0]
                     detections = self._extract_detections(result, class_names, Detection)
                     for detection in detections:
+                        # Raw YOLO boxes without an ID remain visible, but only
+                        # tracked targets can safely participate in trajectory rules.
+                        if detection.track_id < 0:
+                            continue
                         history.add(detection, frame_index)
                         unique_tracks[detection.track_id] = detection.class_name
 
                     frame_events: list[ViolationEvent] = []
                     frame_suspicious_track_ids: set[int] = set()
                     for detection in detections:
+                        if detection.track_id < 0:
+                            continue
                         frame_events.extend(
                             rule_engine.evaluate(
                                 detection,
@@ -271,8 +278,11 @@ class VideoAnalyzer:
                     )
                     writer.write(annotated)
                     last_annotated = annotated
-                    if risk.score >= best_preview_score:
-                        best_preview_score = risk.score
+                    # Before a rule is calibrated, frames often share a zero risk
+                    # score. Break ties by selecting the frame with more visible targets.
+                    preview_key = (risk.score, len(detections))
+                    if best_preview_key is None or preview_key > best_preview_key:
+                        best_preview_key = preview_key
                         best_preview = annotated.copy()
 
                     for event in frame_events:
@@ -349,22 +359,36 @@ class VideoAnalyzer:
         selected = [class_id for class_id, name in names.items() if name in requested]
         return selected or None
 
+    def _resolve_tracker_path(self, configured_tracker) -> str:
+        """Use a project tracker file when it exists, otherwise keep Ultralytics defaults."""
+        tracker_path = self.settings.config_path.parent / str(configured_tracker)
+        return str(tracker_path) if tracker_path.is_file() else str(configured_tracker)
+
     @staticmethod
     def _extract_detections(result, names: dict[int, str], detection_class) -> list:
+        """Keep raw YOLO boxes visible even before ByteTrack assigns an ID."""
         boxes = result.boxes
-        if boxes is None or boxes.id is None or len(boxes) == 0:
+        if boxes is None or len(boxes) == 0:
             return []
+
+        track_ids = (
+            boxes.id.int().cpu().tolist()
+            if boxes.id is not None
+            else [None] * len(boxes)
+        )
         detections = []
         for coordinates, class_id, confidence, track_id in zip(
             boxes.xyxy.cpu().tolist(),
             boxes.cls.int().cpu().tolist(),
             boxes.conf.cpu().tolist(),
-            boxes.id.int().cpu().tolist(),
+            track_ids,
         ):
             x1, y1, x2, y2 = (round(value) for value in coordinates)
             detections.append(
                 detection_class(
-                    track_id=int(track_id),
+                    # -1 means raw detection only: it is drawn, but never used
+                    # for history, unique-track statistics, or violation rules.
+                    track_id=int(track_id) if track_id is not None else -1,
                     class_id=int(class_id),
                     class_name=names.get(int(class_id), str(class_id)),
                     confidence=float(confidence),

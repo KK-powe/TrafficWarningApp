@@ -1,9 +1,11 @@
 model:
   device: auto
-  confidence: 0.25
+  # 航拍小目标常低于 0.25，降低阈值以保留车辆候选框。
+  confidence: 0.15
   iou: 0.50
   image_size: 1280
-  tracker: bytetrack.yaml
+  # 使用更低的建轨阈值；无 ID 的原始检测框仍会显示。
+  tracker: bytetrack_traffic.yaml
   tracked_classes:
     - pedestrian
     - people

@@ -1,0 +1,8 @@
+tracker_type: bytetrack
+# 与 YOLO 检测阈值保持一致，减少航拍小车辆在“检测到但未分配 ID”阶段被丢弃。
+track_high_thresh: 0.15
+track_low_thresh: 0.05
+new_track_thresh: 0.15
+track_buffer: 60
+match_thresh: 0.80
+fuse_score: true

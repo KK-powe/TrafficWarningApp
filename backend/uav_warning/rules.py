@@ -18,6 +18,9 @@ class RuleEngine:
     def __init__(self, rules_config: dict):
         self.config = rules_config
         self._last_emitted_frame: dict[tuple[str, int], int] = {}
+        self._operation_started_frame: dict[int, int] = {}
+        self._operation_episode_emitted: set[int] = set()
+        self._operation_observations: dict[int, int] = {}
 
     def evaluate(
         self,
@@ -27,8 +30,9 @@ class RuleEngine:
         fps: float,
         frame_width: int,
         frame_height: int,
+        all_detections: list[Detection] | None = None,
     ) -> list[ViolationEvent]:
-        candidates: list[tuple[str, int, str, float]] = []
+        candidates: list[tuple[str, int, str, float, int, tuple[str, ...]]] = []
 
         wrong_way = self.config["wrong_way"]
         if (
@@ -42,6 +46,8 @@ class RuleEngine:
                     int(wrong_way["severity"]),
                     "目标运动方向与标定方向相反",
                     float(wrong_way["cooldown_seconds"]),
+                    3,
+                    ("目标运动方向与标定方向相反",),
                 )
             )
 
@@ -59,6 +65,8 @@ class RuleEngine:
                         int(restricted["severity"]),
                         "目标进入了标定的限制区域",
                         float(restricted["cooldown_seconds"]),
+                        3,
+                        ("目标进入了标定的限制区域",),
                     )
                 )
 
@@ -78,11 +86,72 @@ class RuleEngine:
                     int(red_light["severity"]),
                     "目标在配置的红灯时间段越过停止线",
                     float(red_light["cooldown_seconds"]),
+                    3,
+                    ("目标在配置的红灯时间段越过停止线",),
                 )
             )
 
+        operation = self.config.get("illegal_operation", {})
+        if operation.get("enabled") and detection.class_name in operation.get(
+            "vehicle_classes", []
+        ):
+            context = self._has_operation_context(
+                detection,
+                all_detections or [],
+                history,
+                operation,
+                frame_width,
+                frame_height,
+            )
+            if context:
+                started_frame = self._operation_started_frame.setdefault(
+                    detection.track_id, frame_index
+                )
+                observed_seconds = (frame_index - started_frame) / max(fps, 1.0)
+                if (
+                    observed_seconds >= float(operation["minimum_stop_seconds"])
+                    and detection.track_id not in self._operation_episode_emitted
+                ):
+                    observation_count = (
+                        self._operation_observations.get(detection.track_id, 0) + 1
+                    )
+                    high_risk = observation_count >= int(
+                        operation["repeat_observations_for_high_risk"]
+                    )
+                    risk_level = 3 if high_risk else 2
+                    severity = int(
+                        operation[
+                            "high_severity" if high_risk else "medium_severity"
+                        ]
+                    )
+                    candidates.append(
+                        (
+                            "illegal_operation",
+                            severity,
+                            f"同一车辆第 {observation_count} 次出现低速停留并有人员接近的"
+                            "疑似上下客线索，需核验车辆营运许可与现场记录。",
+                            float(operation["cooldown_seconds"]),
+                            risk_level,
+                            (
+                                "车辆连续低速或停留",
+                                "车辆附近检测到人员",
+                                f"累计观察 {observation_count} 次",
+                            ),
+                        )
+                    )
+            else:
+                self._operation_started_frame.pop(detection.track_id, None)
+                self._operation_episode_emitted.discard(detection.track_id)
+
         events: list[ViolationEvent] = []
-        for event_type, severity, message, cooldown_seconds in candidates:
+        for (
+            event_type,
+            severity,
+            message,
+            cooldown_seconds,
+            risk_level,
+            evidence,
+        ) in candidates:
             if self._cooldown_finished(
                 event_type,
                 detection.track_id,
@@ -90,6 +159,11 @@ class RuleEngine:
                 fps,
                 cooldown_seconds,
             ):
+                if event_type == "illegal_operation":
+                    self._operation_observations[detection.track_id] = (
+                        self._operation_observations.get(detection.track_id, 0) + 1
+                    )
+                    self._operation_episode_emitted.add(detection.track_id)
                 events.append(
                     ViolationEvent(
                         frame_index=frame_index,
@@ -99,6 +173,10 @@ class RuleEngine:
                         event_type=event_type,
                         severity=severity,
                         message=message,
+                        risk_level=risk_level,
+                        review_required=True,
+                        legal_conclusion=False,
+                        evidence=evidence,
                     )
                 )
         return events
@@ -111,6 +189,7 @@ class RuleEngine:
         fps: float,
         frame_width: int,
         frame_height: int,
+        all_detections: list[Detection] | None = None,
     ) -> bool:
         """Return true only when this target is close to a configured violation."""
 
@@ -138,13 +217,55 @@ class RuleEngine:
 
         red_light = self.config["red_light"]
         timestamp = frame_index / fps
-        return (
+        if (
             red_light["enabled"]
             and detection.class_name in red_light["target_classes"]
             and self._is_red_time(timestamp, red_light["red_intervals_seconds"])
             and self._near_stop_line(
                 detection, history, red_light, frame_width, frame_height
             )
+        ):
+            return True
+
+        operation = self.config.get("illegal_operation", {})
+        return bool(
+            operation.get("enabled")
+            and detection.class_name in operation.get("vehicle_classes", [])
+            and self._has_operation_context(
+                detection,
+                all_detections or [],
+                history,
+                operation,
+                frame_width,
+                frame_height,
+            )
+        )
+
+    @staticmethod
+    def _has_operation_context(
+        detection: Detection,
+        all_detections: list[Detection],
+        history: TrackHistory,
+        config: dict,
+        width: int,
+        height: int,
+    ) -> bool:
+        points = history.points(detection.track_id)
+        minimum_history = int(config["minimum_history"])
+        if len(points) < minimum_history:
+            return False
+        if vector_length(displacement(points[-minimum_history], points[-1])) > float(
+            config["maximum_displacement_pixels"]
+        ):
+            return False
+        person_classes = set(config["person_classes"])
+        distance_limit = math.hypot(width, height) * float(
+            config["person_proximity_ratio"]
+        )
+        return any(
+            other.class_name in person_classes
+            and math.dist(detection.center, other.center) <= distance_limit
+            for other in all_detections
         )
 
     @staticmethod

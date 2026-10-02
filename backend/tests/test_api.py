@@ -66,6 +66,9 @@ def build_client(tmp_path: Path) -> TestClient:
         results_dir=tmp_path / "results",
         max_upload_bytes=1024,
         worker_count=1,
+        permit_registry_path=Path(__file__).parents[1]
+        / "data"
+        / "permit_registry.json",
     )
     manager = TaskManager(settings, analyzer=FakeAnalyzer())
     return TestClient(create_app(settings, manager))
@@ -132,3 +135,29 @@ def test_rejects_oversized_upload(tmp_path: Path) -> None:
     )
     assert response.status_code == 413
     assert not list((tmp_path / "uploads").glob("*"))
+
+
+def test_illegal_operation_risk_api(tmp_path: Path) -> None:
+    client = build_client(tmp_path)
+
+    permit = client.get("/api/permits/demo-a001")
+    assert permit.status_code == 200
+    assert permit.json()["data"]["status"] == "valid"
+
+    response = client.post(
+        "/api/illegal-operation/evaluate",
+        json={
+            "plateNumber": "DEMO-A002",
+            "repeatedPickupCount": 3,
+            "roadsideStopSeconds": 240,
+            "passengerInteraction": True,
+            "operatingAreaMatch": False,
+        },
+    )
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["riskName"] == "疑似非法营运"
+    assert data["riskLevel"] == 3
+    assert data["reviewRequired"] is True
+    assert data["legalConclusion"] is False
+    assert data["permitCheck"]["status"] == "expired"

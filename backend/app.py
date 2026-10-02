@@ -1,16 +1,30 @@
 import time
 import uuid
 from pathlib import Path
+from typing import Annotated, Literal
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
 
+from .illegal_operation import PermitRegistry, evaluate_illegal_operation_risk
 from .settings import Settings
 from .task_manager import TaskManager, TaskRecord
 
 
 ALLOWED_VIDEO_SUFFIXES = {".mp4", ".mov", ".avi", ".mkv", ".m4v"}
+
+
+class IllegalOperationRequest(BaseModel):
+    plateNumber: str | None = None
+    permitStatus: Literal[
+        "valid", "expired", "suspended", "not_found", "unknown"
+    ] | None = None
+    repeatedPickupCount: Annotated[int, Field(ge=0, le=100)] = 0
+    roadsideStopSeconds: Annotated[float, Field(ge=0, le=86400)] = 0
+    passengerInteraction: bool = False
+    operatingAreaMatch: bool | None = None
 
 
 def api_response(data=None, message: str = "success", code: int = 200) -> dict:
@@ -23,14 +37,16 @@ def create_app(
     active_settings = settings or Settings.from_environment()
     active_settings.prepare_directories()
     manager = task_manager or TaskManager(active_settings)
+    permit_registry = PermitRegistry.from_json(active_settings.permit_registry_path)
 
     application = FastAPI(
         title="无人机交通风险预警 API",
         version="1.0.0",
-        description="上传交通视频，使用YOLO11m + ByteTrack进行目标检测、跟踪与风险分析。",
+        description="上传交通视频，使用YOLO11m + ByteTrack进行目标检测、跟踪与疑似非法营运等风险分析。",
     )
     application.state.settings = active_settings
     application.state.task_manager = manager
+    application.state.permit_registry = permit_registry
     application.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -50,8 +66,34 @@ def create_app(
                 "modelReady": active_settings.model_path.is_file(),
                 "modelPath": str(active_settings.model_path),
                 "workers": active_settings.worker_count,
+                "permitRegistryReady": bool(
+                    active_settings.permit_registry_path
+                    and active_settings.permit_registry_path.is_file()
+                ),
             }
         )
+
+    @application.get("/api/permits/{plate_number}")
+    def get_permit(plate_number: str) -> dict:
+        data = permit_registry.lookup(plate_number)
+        data["notice"] = (
+            "当前接口读取本地许可名录；未查询到不等同于无证营运，须由主管部门复核。"
+        )
+        return api_response(data)
+
+    @application.post("/api/illegal-operation/evaluate")
+    def evaluate_illegal_operation(payload: IllegalOperationRequest) -> dict:
+        permit_check = permit_registry.lookup(payload.plateNumber)
+        result = evaluate_illegal_operation_risk(
+            permit_status=payload.permitStatus or permit_check["status"],
+            repeated_pickup_count=payload.repeatedPickupCount,
+            roadside_stop_seconds=payload.roadsideStopSeconds,
+            passenger_interaction=payload.passengerInteraction,
+            operating_area_match=payload.operatingAreaMatch,
+        )
+        result["plateNumber"] = permit_check["plateNumber"]
+        result["permitCheck"] = permit_check
+        return api_response(result)
 
     @application.post("/api/tasks", status_code=202)
     async def create_task(video: UploadFile = File(...)) -> dict:

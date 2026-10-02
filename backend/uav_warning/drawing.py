@@ -18,6 +18,7 @@ EVENT_LABELS = {
     "wrong_way": "WRONG WAY",
     "restricted_zone": "RESTRICTED ZONE",
     "red_light": "RED LIGHT",
+    "illegal_operation": "OPERATION RISK",
 }
 
 
@@ -37,9 +38,16 @@ def draw_scene(
 
     violation_track_ids = set(active_violation_track_ids or ())
     violation_track_ids.update(
-        event.track_id for event in frame_events if event.track_id >= 0
+        event.track_id
+        for event in frame_events
+        if event.track_id >= 0 and event.risk_level >= 3
     )
     suspicious_ids = set(suspicious_track_ids or ())
+    suspicious_ids.update(
+        event.track_id
+        for event in frame_events
+        if event.track_id >= 0 and event.risk_level == 2
+    )
     suspicious_ids.difference_update(violation_track_ids)
 
     for detection in detections:

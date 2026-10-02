@@ -76,6 +76,19 @@ DEFAULT_CONFIG = {
             "cooldown_seconds": 5.0,
             "severity": 40,
         },
+        "illegal_operation": {
+            "enabled": True,
+            "vehicle_classes": ["car", "van", "bus", "truck"],
+            "person_classes": ["pedestrian", "people", "person"],
+            "minimum_history": 8,
+            "maximum_displacement_pixels": 14.0,
+            "person_proximity_ratio": 0.12,
+            "minimum_stop_seconds": 3.0,
+            "repeat_observations_for_high_risk": 3,
+            "cooldown_seconds": 5.0,
+            "medium_severity": 25,
+            "high_severity": 55,
+        },
     },
     "risk": {
         "event_window_seconds": 3.0,
@@ -83,6 +96,7 @@ DEFAULT_CONFIG = {
             "wrong_way": 25,
             "restricted_zone": 20,
             "red_light": 40,
+            "illegal_operation": 25,
         },
         "levels": {"medium": 25, "high": 50, "critical": 75},
     },
@@ -219,6 +233,7 @@ class VideoAnalyzer:
                                 fps,
                                 width,
                                 height,
+                                detections,
                             )
                         )
                         if rule_engine.is_suspicious(
@@ -228,13 +243,19 @@ class VideoAnalyzer:
                             fps,
                             width,
                             height,
+                            detections,
                         ):
                             frame_suspicious_track_ids.add(detection.track_id)
 
                     frame_violation_track_ids = {
                         event.track_id
                         for event in frame_events
-                        if event.track_id >= 0
+                        if event.track_id >= 0 and event.risk_level >= 3
+                    }
+                    frame_medium_event_track_ids = {
+                        event.track_id
+                        for event in frame_events
+                        if event.track_id >= 0 and event.risk_level == 2
                     }
                     violation_track_ids.update(frame_violation_track_ids)
 
@@ -256,6 +277,7 @@ class VideoAnalyzer:
                     # Red has priority. A target already confirmed as violating
                     # is never downgraded to yellow later in the same video.
                     frame_suspicious_track_ids.difference_update(violation_track_ids)
+                    frame_suspicious_track_ids.update(frame_medium_event_track_ids)
                     suspicious_track_ids_seen.update(frame_suspicious_track_ids)
 
                     risk = risk_scorer.update(
@@ -409,11 +431,12 @@ class VideoAnalyzer:
             "wrong_way": "逆行违规",
             "restricted_zone": "驶入限制区域",
             "red_light": "闯红灯违规",
+            "illegal_operation": "疑似非法营运线索",
         }
         return {
             "id": event_id,
             "type": labels.get(event.event_type, event.event_type),
-            "riskLevel": 3,
+            "riskLevel": event.risk_level,
             "timestamp": created_at_ms + round(event.timestamp_seconds * 1000),
             "frameImageFile": image_file,
             "description": event.message,
@@ -421,4 +444,7 @@ class VideoAnalyzer:
             "targetClass": event.class_name,
             "location": "上传视频画面",
             "reviewStatus": 0,
+            "reviewRequired": event.review_required,
+            "legalConclusion": event.legal_conclusion,
+            "evidence": list(event.evidence),
         }

@@ -70,3 +70,54 @@ def test_target_inside_zone_generates_confirmed_violation() -> None:
     assert len(events) == 1
     assert events[0].track_id == 7
     assert events[0].event_type == "restricted_zone"
+
+
+def test_repeated_pickup_clues_escalate_illegal_operation_risk() -> None:
+    config = build_config()
+    config["restricted_zone"]["enabled"] = False
+    config["illegal_operation"] = {
+        "enabled": True,
+        "vehicle_classes": ["car"],
+        "person_classes": ["pedestrian"],
+        "minimum_history": 2,
+        "maximum_displacement_pixels": 2,
+        "person_proximity_ratio": 0.2,
+        "minimum_stop_seconds": 2,
+        "repeat_observations_for_high_risk": 3,
+        "cooldown_seconds": 0,
+        "medium_severity": 25,
+        "high_severity": 55,
+    }
+    engine = RuleEngine(config)
+    history = TrackHistory(history_length=60, stale_after_frames=90)
+    car = detection(9, (50, 50))
+    person = Detection(
+        track_id=10,
+        class_id=0,
+        class_name="pedestrian",
+        confidence=0.9,
+        box=(53, 48, 57, 52),
+        center=(55, 50),
+    )
+    collected = []
+
+    for start in (0, 5, 10):
+        history.add(car, start)
+        engine.evaluate(car, history, start, 1, 100, 100, [car])
+        for frame_index in range(start + 1, start + 4):
+            history.add(car, frame_index)
+            collected.extend(
+                engine.evaluate(
+                    car,
+                    history,
+                    frame_index,
+                    1,
+                    100,
+                    100,
+                    [car, person],
+                )
+            )
+
+    assert [event.risk_level for event in collected] == [2, 2, 3]
+    assert all(event.event_type == "illegal_operation" for event in collected)
+    assert all(event.legal_conclusion is False for event in collected)

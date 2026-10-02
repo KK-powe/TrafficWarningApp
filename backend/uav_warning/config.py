@@ -37,3 +37,11 @@ def _validate(config: dict) -> None:
         raise ValueError("wrong_way.expected_direction 必须是非零二维向量")
     if len(config["rules"]["restricted_zone"]["polygon"]) < 3:
         raise ValueError("restricted_zone.polygon 至少需要3个点")
+    operation = config["rules"].get("illegal_operation", {})
+    if operation.get("enabled"):
+        if int(operation["minimum_history"]) < 2:
+            raise ValueError("illegal_operation.minimum_history 不能小于2")
+        if float(operation["minimum_stop_seconds"]) <= 0:
+            raise ValueError("illegal_operation.minimum_stop_seconds 必须大于0")
+        if not 0 < float(operation["person_proximity_ratio"]) <= 1:
+            raise ValueError("illegal_operation.person_proximity_ratio 必须在0到1之间")

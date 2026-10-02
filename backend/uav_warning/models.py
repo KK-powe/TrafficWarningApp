@@ -23,6 +23,10 @@ class ViolationEvent:
     event_type: str
     severity: int
     message: str
+    risk_level: int = 3
+    review_required: bool = True
+    legal_conclusion: bool = False
+    evidence: tuple[str, ...] = ()
 
     def to_dict(self) -> dict:
         return asdict(self)

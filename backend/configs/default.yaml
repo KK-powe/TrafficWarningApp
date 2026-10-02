@@ -22,8 +22,8 @@ tracking:
   history_length: 60
   stale_after_frames: 90
 
-# 三类规则依赖具体视频的方向、区域和信号灯时间标定，默认关闭。
-# 只有启用并完成标定的规则才会产生黄色可疑目标和红色违规目标。
+# 逆行、区域和信号灯规则依赖机位标定，默认关闭。
+# 疑似非法营运只筛选行为线索，默认开启；结果必须人工复核。
 rules:
   wrong_way:
     enabled: false
@@ -63,6 +63,22 @@ rules:
     cooldown_seconds: 5
     severity: 40
 
+  illegal_operation:
+    enabled: true
+    vehicle_classes: [car, van, bus, truck]
+    person_classes: [pedestrian, people, person]
+    # 轨迹在 minimum_history 帧内移动不超过该像素值，视为低速或停留。
+    minimum_history: 8
+    maximum_displacement_pixels: 14
+    # 人员中心与车辆中心距离小于画面对角线的该比例，视为接近。
+    person_proximity_ratio: 0.12
+    minimum_stop_seconds: 3
+    # 同一跟踪目标分三次出现独立上下客线索后，升级为红色高风险。
+    repeat_observations_for_high_risk: 3
+    cooldown_seconds: 5
+    medium_severity: 25
+    high_severity: 55
+
 # 车辆数量只用于统计，不参与风险分数、边框颜色或目标框颜色。
 risk:
   event_window_seconds: 3
@@ -70,6 +86,7 @@ risk:
     wrong_way: 25
     restricted_zone: 20
     red_light: 40
+    illegal_operation: 25
   levels:
     medium: 25
     high: 50

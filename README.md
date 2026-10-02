@@ -8,6 +8,8 @@
 - 后端异步任务队列，避免长视频请求一直阻塞；
 - 查询排队、分析进度和失败原因；
 - YOLO11m 1280 + ByteTrack 检测和跟踪；
+- 基于车辆停留、人员接近和重复上下客线索的疑似非法营运筛查；
+- 营运许可本地名录查询与多证据风险评分接口；
 - 标注视频、预览图片、事件截图和 JSON 结果；
 - Android 展示统计、事件、预览图并打开结果视频；
 - 支持普通电脑和 AutoDL 两种后端启动方式。
@@ -116,15 +118,38 @@ GET  /api/tasks/{taskId}/result    获取完整分析结果
 GET  /api/analysis/realtime        获取最近一次完成结果
 GET  /api/analysis/history         获取历史结果摘要
 POST /api/review/{eventId}/{status} 复核事件，1确认、2误报
+GET  /api/permits/{plateNumber}    查询本地营运许可名录
+POST /api/illegal-operation/evaluate 组合许可与行为线索进行风险评分
 ```
 
 后端默认只开一个分析 worker，避免多个任务同时抢占一张 GPU。上传文件、结果和权重都已加入 `.gitignore`。
 
-## 6. 关于交通违法规则
+## 6. 疑似非法营运检测
+
+视频分析默认启用疑似非法营运线索筛查。当机动车在连续轨迹中保持低速或停留，同时附近检测到人员时，系统会把该车辆标为黄色中风险并生成“疑似非法营运线索”事件；同一跟踪目标在不同时间段反复触发三次后，才升级为红色高风险。Android 端无需新增上传流程，分析完成后会和其他事件一起显示在预警列表及详情页中。
+
+系统还提供独立评分接口，用于以后接入车牌 OCR 和有权限的营运许可数据：
+
+```json
+POST /api/illegal-operation/evaluate
+{
+  "plateNumber": "DEMO-A002",
+  "repeatedPickupCount": 3,
+  "roadsideStopSeconds": 240,
+  "passengerInteraction": true,
+  "operatingAreaMatch": false
+}
+```
+
+许可名录默认读取 `backend/data/permit_registry.json`。仓库内只有演示编号，不含真实车辆信息；正式应用必须替换为主管部门授权的数据源。视频中的停留和人员接近只能作为线索，接口始终返回 `legalConclusion: false`，不能替代执法认定，必须人工复核。
+
+规则阈值可在 `backend/configs/default.yaml` 的 `illegal_operation` 中调整。航拍高度、机位移动和画面分辨率变化后，应重新标定停留位移与人员接近阈值。
+
+## 7. 关于其他交通违法规则
 
 目标检测和跟踪可以直接运行；逆行、限制区域、闯红灯依赖具体摄像机画面中的行驶方向、道路多边形、停止线和红灯时段。因此这些规则在 `backend/configs/default.yaml` 中默认关闭，完成视频标定后再开启。未标定时系统仍会输出目标数量、跟踪结果和高密度风险提示，不会把未验证的规则判断冒充真实违法结论。
 
-## 后端测试
+## 8. 测试
 
 ```bash
 python3 -m pip install -r backend/requirements-dev.txt

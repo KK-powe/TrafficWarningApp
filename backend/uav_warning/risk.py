@@ -42,8 +42,13 @@ class RiskScorer:
             for event in self._recent_events
         )
 
-        if self._recent_events:
+        high_risk_events = [
+            event for event in self._recent_events if event.risk_level >= 3
+        ]
+        if high_risk_events:
             score = max(float(levels["high"]), event_score)
+        elif self._recent_events:
+            score = max(float(levels["medium"]), event_score)
         elif suspicious_objects > 0:
             score = float(levels["medium"])
         else:

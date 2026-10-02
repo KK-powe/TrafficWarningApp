@@ -1,0 +1,19 @@
+{
+  "description": "课程项目演示名录，不包含真实车辆信息。正式使用时须替换为有权限的数据源。",
+  "records": [
+    {
+      "plateNumber": "DEMO-A001",
+      "status": "valid",
+      "permitNumber": "DEMO-PERMIT-001",
+      "operatingArea": "演示区域",
+      "expiresOn": "2099-12-31"
+    },
+    {
+      "plateNumber": "DEMO-A002",
+      "status": "expired",
+      "permitNumber": "DEMO-PERMIT-002",
+      "operatingArea": "演示区域",
+      "expiresOn": "2025-12-31"
+    }
+  ]
+}

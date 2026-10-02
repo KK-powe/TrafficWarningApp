@@ -285,6 +285,18 @@ public class ApiRepository {
                 "快速路主路区域"
         ));
 
+        events.add(new WarningEvent(
+                "evt_006",
+                "疑似非法营运线索",
+                2,
+                System.currentTimeMillis() - 360000,
+                "http://192.168.1.100:5000/frames/frame_006.jpg",
+                "车辆低速停留期间检测到人员接近，需结合营运许可和现场记录人工复核",
+                "T-044",
+                "car",
+                "道路临停区域"
+        ));
+
         data.setEvents(events);
         data.setAnnotatedImageUrl("http://192.168.1.100:5000/current_frame.jpg");
         response.setData(data);

@@ -15,6 +15,7 @@ class Settings:
     results_dir: Path
     max_upload_bytes: int
     worker_count: int
+    permit_registry_path: Path | None = None
 
     @classmethod
     def from_environment(cls) -> "Settings":
@@ -41,6 +42,12 @@ class Settings:
             * 1024
             * 1024,
             worker_count=max(1, int(os.getenv("TRAFFIC_WORKERS", "1"))),
+            permit_registry_path=Path(
+                os.getenv(
+                    "TRAFFIC_PERMIT_REGISTRY_PATH",
+                    BACKEND_ROOT / "data" / "permit_registry.json",
+                )
+            ).expanduser().resolve(),
         )
 
     def prepare_directories(self) -> None:

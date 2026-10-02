@@ -52,3 +52,23 @@ def test_confirmed_violation_is_at_least_high_risk() -> None:
     )
     assert risk.score == 50
     assert risk.level == "HIGH"
+
+
+def test_operation_clue_is_medium_until_multiple_evidence_is_confirmed() -> None:
+    event = ViolationEvent(
+        frame_index=0,
+        timestamp_seconds=0,
+        track_id=8,
+        class_name="car",
+        event_type="illegal_operation",
+        severity=25,
+        message="疑似上下客线索",
+        risk_level=2,
+    )
+    risk = RiskScorer(CONFIG, fps=25).update(
+        frame_index=0,
+        tracked_objects=2,
+        new_events=[event],
+    )
+    assert risk.score == 25
+    assert risk.level == "MEDIUM"
